@@ -18,7 +18,7 @@
         html, body {
             height: 100%;
             width: 100%;
-            background-color: #1a1a1a; /* Dark background */
+            background-color: #000000; /* Pure black background */
             color: #e0e0e0; /* Light text color */
             font-family: 'PT Serif Caption', serif; /* Apply the font */
             overflow: hidden; /* Prevent body scroll, editor handles scroll */
@@ -36,13 +36,13 @@
             background-image: url('data:image/svg+xml,\
                 <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">\
                 <filter id="noise">\
-                    <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/>\
+                    <feTurbulence type="fractalNoise" baseFrequency="0.75" numOctaves="3" stitchTiles="stitch"/>\
                 </filter>\
-                <rect width="100%" height="100%" filter="url(%23noise)" opacity="0.05"/>\
+                <rect width="100%" height="100%" filter="url(%23noise)" opacity="0.04"/>\
                 </svg>');
             pointer-events: none;
             z-index: -1;
-            opacity: 0.5;
+            opacity: 0.4;
         }
 
         /* Main container */
@@ -53,6 +53,8 @@
             min-height: 100vh;
             padding: 5vh 5vw;
             overflow-y: auto;
+            scrollbar-width: thin; /* Firefox */
+            scrollbar-color: rgba(255, 255, 255, 0.2) rgba(255, 255, 255, 0.05); /* Firefox */
         }
 
         /* Editable area */
@@ -61,13 +63,18 @@
             max-width: 80ch;
             min-height: 90vh;
             font-size: 18px;
-            line-height: 1.6;
+            line-height: 1.7;
             text-align: left;
-            outline: none;
+            outline: none; /* Ensure default outline is removed */
             white-space: pre-wrap;
             word-wrap: break-word;
             caret-color: #e0e0e0;
         }
+
+        #editor:focus {
+             /* No specific focus style */
+        }
+
 
         /* Strikethrough style */
         #editor del {
@@ -78,8 +85,8 @@
 
         /* Placeholder */
         #editor:empty::before {
-            content: "Start typing here... (Ctrl/Cmd+S to Save)";
-            color: #555;
+            content: "Click here to start typing... (Ctrl/Cmd+S to Save)"; /* Updated placeholder */
+            color: #777;
             pointer-events: none;
             display: block;
             text-align: center;
@@ -88,6 +95,29 @@
         #editor:focus::before {
              content: "";
          }
+
+         /* Scrollbar Styling (WebKit) */
+        .container::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        .container::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 4px;
+        }
+        .container::-webkit-scrollbar-thumb {
+            background-color: rgba(255, 255, 255, 0.15);
+            border-radius: 4px;
+            border: 2px solid transparent;
+            background-clip: content-box;
+        }
+        .container::-webkit-scrollbar-thumb:hover {
+            background-color: rgba(255, 255, 255, 0.25);
+        }
+        .container::-webkit-scrollbar-corner {
+           background: rgba(0, 0, 0, 0);
+         }
+
     </style>
 </head>
 <body>
@@ -106,6 +136,7 @@
             if (savedContent) {
                 editor.innerHTML = savedContent;
             }
+            // Don't auto-focus, let user click trigger potential fullscreen
         };
 
         function saveTextToFile() {
@@ -130,179 +161,148 @@
             }
         }
 
+         function findLastTextNode(node) {
+            if (!node) return null;
+            if (node.nodeType === Node.TEXT_NODE && /\S/.test(node.textContent || '')) { return node; }
+            if (node.nodeType === Node.ELEMENT_NODE) {
+                 for (let i = node.childNodes.length - 1; i >= 0; i--) {
+                    const found = findLastTextNode(node.childNodes[i]);
+                    if (found) return found;
+                }
+            }
+            return null;
+        }
+
+        // --- MODIFICATION START: Request Fullscreen on First Focus ---
+        editor.addEventListener('focus', function requestFS() {
+            // Check if fullscreen is supported and not already active
+            const isFullscreenAvailable = document.fullscreenEnabled || document.webkitFullscreenEnabled || document.msFullscreenEnabled;
+            const isFullscreenActive = document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
+
+            if (isFullscreenAvailable && !isFullscreenActive) {
+                console.log("First focus, requesting fullscreen...");
+                const element = document.documentElement; // Request fullscreen for the whole page (html element)
+
+                // Standard request
+                if (element.requestFullscreen) {
+                    element.requestFullscreen().catch(err => {
+                        console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
+                        // Inform user subtly? Or just log it. Maybe fullscreen isn't allowed.
+                    });
+                }
+                // Webkit (Safari) prefix
+                else if (element.webkitRequestFullscreen) {
+                    element.webkitRequestFullscreen().catch(err => { console.error(`Webkit error attempting fullscreen: ${err.message} (${err.name})`); });
+                }
+                // MS (IE11) prefix
+                else if (element.msRequestFullscreen) {
+                    element.msRequestFullscreen().catch(err => { console.error(`MS error attempting fullscreen: ${err.message} (${err.name})`); });
+                }
+            } else if (isFullscreenActive) {
+                 console.log("Already in fullscreen mode.");
+            } else {
+                 console.log("Fullscreen not supported or enabled by browser/user.");
+            }
+        }, { once: true }); // Use {once: true} so this listener only runs the very first time the editor is focused
+        // --- MODIFICATION END ---
+
+
         // --- Handle Keydown Events ---
         editor.addEventListener('keydown', function(event) {
-
-            // --- Save Shortcut ---
+            // Save Shortcut
             if ((event.ctrlKey || event.metaKey) && (event.key === 's' || event.key === 'S')) {
-                event.preventDefault();
-                saveTextToFile();
-                lastBackspaceTime = 0;
-                return;
+                event.preventDefault(); saveTextToFile(); lastBackspaceTime = 0; return;
             }
-
-            // --- Prevent Delete ---
+            // Prevent Delete
             if (event.key === 'Delete' || event.keyCode === 46) {
-                 event.preventDefault();
-                 console.log("Delete key prevented.");
-                 lastBackspaceTime = 0;
-                 return;
+                 event.preventDefault(); console.log("Delete key prevented."); lastBackspaceTime = 0; return;
             }
-
-            // --- Handle Backspace ---
+            // Handle Backspace
             if (event.key === 'Backspace' || event.keyCode === 8) {
                 event.preventDefault();
-
                 const currentTime = Date.now();
                 const isDoublePress = (currentTime - lastBackspaceTime) < doublePressThreshold;
-
                 if (isDoublePress) {
                     console.log("Double Backspace detected.");
                     try {
                         const selection = window.getSelection();
                         if (selection && selection.rangeCount > 0 && selection.isCollapsed) {
                             const range = selection.getRangeAt(0);
-                            let container = range.startContainer;
-                            let offset = range.startOffset;
-
-                            let targetContainer = null;
-                            let targetOffset = 0;
-
-                            // --- MODIFICATION START: Find Target Node using TreeWalker ---
-                            console.log(`Initial check: Container=${container.nodeName}, Offset=${offset}, Type=${container.nodeType}`);
-
+                            let container = range.startContainer; let offset = range.startOffset;
+                            let targetContainer = null; let targetOffset = 0;
+                            // Find Target Node using TreeWalker
+                            // console.log(`Initial check: Container=${container.nodeName}, Offset=${offset}, Type=${container.nodeType}`); // Keep console logs minimal now
                             if (container.nodeType === Node.TEXT_NODE && offset > 0) {
-                                // Standard case: Cursor is within a text node with content before it.
-                                targetContainer = container;
-                                targetOffset = offset;
-                                console.log("Mode 1: Cursor within text node.");
+                                targetContainer = container; targetOffset = offset; // console.log("Mode 1: Cursor within text node.");
                             } else {
-                                // Case: Cursor is at offset 0 or not in a text node.
-                                // We need to find the last text node *before* the current cursor position.
-                                console.log("Mode 2: Cursor at offset 0 or not in text. Searching backwards...");
-
-                                // Create a TreeWalker to iterate through text nodes within the editor
+                                // console.log("Mode 2: Cursor at offset 0 or not in text. Searching backwards...");
                                 const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, null, false);
-                                let currentNode = null;
-                                let lastValidNodeBeforeCursor = null;
-
-                                // Iterate through all text nodes from the beginning
+                                let currentNode = null; let lastValidNodeBeforeCursor = null;
                                 while ((currentNode = walker.nextNode())) {
-                                    // Create a range representing the end of the current node being checked
                                     const nodeEndRange = document.createRange();
-                                    try {
-                                        nodeEndRange.selectNodeContents(currentNode);
-                                        nodeEndRange.collapse(false); // Collapse to the end point
-                                    } catch(e) {
-                                        console.warn("Could not select node contents, skipping node:", currentNode, e);
-                                        continue; // Skip this node if selection fails
-                                    }
-
-
-                                    // Compare the cursor position (range.start) with the end of the current node
-                                    // range.compareBoundaryPoints returns:
-                                    // -1 if range start is BEFORE nodeEndRange start
-                                    //  0 if they are the same
-                                    //  1 if range start is AFTER nodeEndRange start
-                                    // We want nodes that END before or exactly at the cursor position.
+                                    try { nodeEndRange.selectNodeContents(currentNode); nodeEndRange.collapse(false); }
+                                    catch(e) { /* console.warn("Could not select node contents, skipping node:", currentNode, e); */ continue; } // Silence warning
                                     if (range.compareBoundaryPoints(Range.START_TO_END, nodeEndRange) >= 0) {
-                                        // Check if the node has actual content (not just whitespace)
-                                        if (/\S/.test(currentNode.textContent || '')) {
-                                            // This node ends before or at the cursor, and has content. It's our current best candidate.
-                                            lastValidNodeBeforeCursor = currentNode;
-                                            // console.log(`Candidate node found: "${lastValidNodeBeforeCursor.textContent.slice(-20)}"`);
-                                        }
-                                    } else {
-                                        // We've found a node that ends *after* the cursor position.
-                                        // This means the previous candidate (`lastValidNodeBeforeCursor`) was the correct one.
-                                        // console.log("Node ends after cursor, stopping search.");
-                                        break;
-                                    }
+                                        if (/\S/.test(currentNode.textContent || '')) { lastValidNodeBeforeCursor = currentNode; }
+                                    } else { break; }
                                 }
-
-                                // Use the last valid node found
                                 if (lastValidNodeBeforeCursor) {
-                                    targetContainer = lastValidNodeBeforeCursor;
-                                    targetOffset = targetContainer.textContent?.length || 0; // Target the end of this node
-                                    console.log(`Found preceding text node via TreeWalker: "${targetContainer.textContent.slice(-30)}"`);
-                                } else {
-                                     console.log("TreeWalker did not find a preceding non-empty text node.");
-                                }
+                                    targetContainer = lastValidNodeBeforeCursor; targetOffset = targetContainer.textContent?.length || 0;
+                                    // console.log(`Found preceding text node via TreeWalker: "${targetContainer.textContent.slice(-30)}"`);
+                                } else { /* console.log("TreeWalker did not find a preceding non-empty text node."); */ }
                             }
-                            // --- MODIFICATION END ---
-
-
-                            // --- Proceed only if we found a valid target ---
+                            // Proceed only if we found a valid target
                             if (targetContainer && targetContainer.nodeType === Node.TEXT_NODE && targetOffset > 0) {
                                 const text = targetContainer.textContent || '';
-                                console.log(`Operating on text: "${text.substring(0, 20)}...", Offset: ${targetOffset}`);
-
-                                // Find word boundaries (logic remains the same, uses targetContainer/Offset)
+                                // console.log(`Operating on text: "${text.substring(0, 20)}...", Offset: ${targetOffset}`);
                                 let effectiveOffset = targetOffset;
                                 while (effectiveOffset > 0 && (text[effectiveOffset - 1] === ' ' || text[effectiveOffset - 1] === '\n')) { effectiveOffset--; }
                                 let wordStart = effectiveOffset;
-                                if (effectiveOffset > 0) { while (wordStart > 0 && /\w/.test(text[wordStart - 1])) { wordStart--; } }
-                                else { wordStart = 0; }
-
+                                if (effectiveOffset > 0) { while (wordStart > 0 && /\w/.test(text[wordStart - 1])) { wordStart--; } } else { wordStart = 0; }
                                 if (wordStart < effectiveOffset) {
                                     const wordRange = document.createRange();
-                                    wordRange.setStart(targetContainer, wordStart);
-                                    wordRange.setEnd(targetContainer, effectiveOffset);
-
-                                    // Check if already deleted
-                                    let parent = targetContainer.parentNode;
-                                    let isAlreadyDeleted = false;
+                                    wordRange.setStart(targetContainer, wordStart); wordRange.setEnd(targetContainer, effectiveOffset);
+                                    let parent = targetContainer.parentNode; let isAlreadyDeleted = false;
                                     while(parent && parent !== editor) { if (parent.nodeName === 'DEL') { isAlreadyDeleted = true; break; } parent = parent.parentNode; }
                                     if (!isAlreadyDeleted && wordRange.startContainer.previousSibling && wordRange.startContainer.previousSibling.nodeName === 'DEL' && wordRange.startOffset === 0) { /* Edge case */ }
                                     else if (!isAlreadyDeleted && targetContainer.parentNode.nodeName === 'DEL') { isAlreadyDeleted = true; }
-
                                     if (!isAlreadyDeleted) {
-                                        // Apply strikethrough
-                                        const contents = wordRange.extractContents();
-                                        const delElement = document.createElement('del');
-                                        delElement.appendChild(contents);
-                                        wordRange.insertNode(delElement);
-
-                                        // Position cursor using ZWS
+                                        const contents = wordRange.extractContents(); const delElement = document.createElement('del');
+                                        delElement.appendChild(contents); wordRange.insertNode(delElement);
                                         const parentNode = delElement.parentNode;
                                         if (parentNode) {
                                             const zwsNode = document.createTextNode('\u200B');
                                             parentNode.insertBefore(zwsNode, delElement.nextSibling);
-                                            const cursorRange = document.createRange();
-                                            cursorRange.setStart(zwsNode, 1);
-                                            cursorRange.collapse(true);
-                                            selection.removeAllRanges();
-                                            selection.addRange(cursorRange);
+                                            const cursorRange = document.createRange(); cursorRange.setStart(zwsNode, 1); cursorRange.collapse(true);
+                                            selection.removeAllRanges(); selection.addRange(cursorRange);
                                         } else {
                                              console.error("Could not find parent node to insert ZWS.");
                                              const fallbackRange = document.createRange(); fallbackRange.setStartAfter(delElement); fallbackRange.collapse(true); selection.removeAllRanges(); selection.addRange(fallbackRange);
                                         }
-                                        editor.dispatchEvent(new Event('input', { bubbles: true }));
-                                        console.log("Struck out word.");
-                                    } else { console.log("Word already struck out or cursor in ambiguous position."); }
-                                } else { console.log("No word found before cursor (or only spaces found)."); }
-                            } else { console.log("Could not find suitable text node or position to apply strikethrough."); }
-                        } else { console.log("Selection is not collapsed or invalid."); }
+                                        editor.dispatchEvent(new Event('input', { bubbles: true })); // console.log("Struck out word.");
+                                    } else { /* console.log("Word already struck out or cursor in ambiguous position."); */ }
+                                } else { /* console.log("No word found before cursor (or only spaces found)."); */ }
+                            } else { /* console.log("Could not find suitable text node or position to apply strikethrough."); */ }
+                        } else { /* console.log("Selection is not collapsed or invalid."); */ }
                     } catch (e) { console.error("Error applying strikethrough:", e); }
                     lastBackspaceTime = 0; // Reset timer
                 } else {
                     lastBackspaceTime = currentTime; // Update time
-                    console.log("Single Backspace press detected - timer started.");
+                    // console.log("Single Backspace press detected - timer started.");
                 }
                  return; // Stop processing
             }
-
-            // --- Reset backspace timer ---
+            // Reset backspace timer
             lastBackspaceTime = 0;
-
         }); // End keydown listener
 
-        // --- Save to Local Storage ---
+        // Save to Local Storage
         editor.addEventListener('input', function() {
             localStorage.setItem(localStorageKey, editor.innerHTML);
-            console.log("Content saved to local storage.");
+            // console.log("Content saved to local storage."); // Reduce logging
         });
 
     </script>
 </body>
 </html>
+
