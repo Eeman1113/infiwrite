@@ -21,7 +21,8 @@
             background-color: #000000; /* Pure black background */
             color: #e0e0e0; /* Light text color */
             font-family: 'PT Serif Caption', serif; /* Apply the font */
-            overflow: hidden; /* Prevent body scroll, editor handles scroll */
+            /* MODIFICATION: Keep overflow hidden on body to prevent double scrollbars */
+            overflow: hidden;
             position: relative; /* Needed for the noise pseudo-element */
         }
 
@@ -50,8 +51,10 @@
             display: flex;
             justify-content: center;
             align-items: flex-start;
-            min-height: 100vh;
+            /* MODIFICATION: Set fixed height to enable internal scrolling */
+            height: 100vh; /* Was min-height */
             padding: 5vh 5vw;
+            /* MODIFICATION: Keep overflow-y auto to show scrollbar when needed */
             overflow-y: auto;
             scrollbar-width: thin; /* Firefox */
             scrollbar-color: rgba(255, 255, 255, 0.2) rgba(255, 255, 255, 0.05); /* Firefox */
@@ -61,7 +64,8 @@
         #editor {
             width: 100%;
             max-width: 80ch;
-            min-height: 90vh;
+            /* MODIFICATION: Removed min-height, let content define height */
+            /* min-height: 90vh; */
             font-size: 18px;
             line-height: 1.7;
             text-align: left;
@@ -69,6 +73,7 @@
             white-space: pre-wrap;
             word-wrap: break-word;
             caret-color: #e0e0e0;
+            padding-bottom: 40vh; /* Add padding at the bottom to ensure scroll works well before reaching end */
         }
 
         #editor:focus {
@@ -126,6 +131,7 @@
     </div>
 
     <script>
+        // --- JavaScript remains the same ---
         const editor = document.getElementById('editor');
         const localStorageKey = 'noiseEditorContent';
         let lastBackspaceTime = 0;
@@ -136,7 +142,6 @@
             if (savedContent) {
                 editor.innerHTML = savedContent;
             }
-            // Don't auto-focus, let user click trigger potential fullscreen
         };
 
         function saveTextToFile() {
@@ -173,41 +178,20 @@
             return null;
         }
 
-        // --- MODIFICATION START: Request Fullscreen on First Focus ---
         editor.addEventListener('focus', function requestFS() {
-            // Check if fullscreen is supported and not already active
             const isFullscreenAvailable = document.fullscreenEnabled || document.webkitFullscreenEnabled || document.msFullscreenEnabled;
             const isFullscreenActive = document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
-
             if (isFullscreenAvailable && !isFullscreenActive) {
                 console.log("First focus, requesting fullscreen...");
-                const element = document.documentElement; // Request fullscreen for the whole page (html element)
-
-                // Standard request
-                if (element.requestFullscreen) {
-                    element.requestFullscreen().catch(err => {
-                        console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
-                        // Inform user subtly? Or just log it. Maybe fullscreen isn't allowed.
-                    });
-                }
-                // Webkit (Safari) prefix
-                else if (element.webkitRequestFullscreen) {
-                    element.webkitRequestFullscreen().catch(err => { console.error(`Webkit error attempting fullscreen: ${err.message} (${err.name})`); });
-                }
-                // MS (IE11) prefix
-                else if (element.msRequestFullscreen) {
-                    element.msRequestFullscreen().catch(err => { console.error(`MS error attempting fullscreen: ${err.message} (${err.name})`); });
-                }
-            } else if (isFullscreenActive) {
-                 console.log("Already in fullscreen mode.");
-            } else {
-                 console.log("Fullscreen not supported or enabled by browser/user.");
-            }
-        }, { once: true }); // Use {once: true} so this listener only runs the very first time the editor is focused
-        // --- MODIFICATION END ---
+                const element = document.documentElement;
+                if (element.requestFullscreen) { element.requestFullscreen().catch(err => { console.error(`Error attempting fullscreen: ${err.message} (${err.name})`); }); }
+                else if (element.webkitRequestFullscreen) { element.webkitRequestFullscreen().catch(err => { console.error(`Webkit error attempting fullscreen: ${err.message} (${err.name})`); }); }
+                else if (element.msRequestFullscreen) { element.msRequestFullscreen().catch(err => { console.error(`MS error attempting fullscreen: ${err.message} (${err.name})`); }); }
+            } else if (isFullscreenActive) { console.log("Already in fullscreen mode."); }
+            else { console.log("Fullscreen not supported or enabled."); }
+        }, { once: true });
 
 
-        // --- Handle Keydown Events ---
         editor.addEventListener('keydown', function(event) {
             // Save Shortcut
             if ((event.ctrlKey || event.metaKey) && (event.key === 's' || event.key === 'S')) {
@@ -231,30 +215,26 @@
                             let container = range.startContainer; let offset = range.startOffset;
                             let targetContainer = null; let targetOffset = 0;
                             // Find Target Node using TreeWalker
-                            // console.log(`Initial check: Container=${container.nodeName}, Offset=${offset}, Type=${container.nodeType}`); // Keep console logs minimal now
                             if (container.nodeType === Node.TEXT_NODE && offset > 0) {
-                                targetContainer = container; targetOffset = offset; // console.log("Mode 1: Cursor within text node.");
+                                targetContainer = container; targetOffset = offset;
                             } else {
-                                // console.log("Mode 2: Cursor at offset 0 or not in text. Searching backwards...");
                                 const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, null, false);
                                 let currentNode = null; let lastValidNodeBeforeCursor = null;
                                 while ((currentNode = walker.nextNode())) {
                                     const nodeEndRange = document.createRange();
                                     try { nodeEndRange.selectNodeContents(currentNode); nodeEndRange.collapse(false); }
-                                    catch(e) { /* console.warn("Could not select node contents, skipping node:", currentNode, e); */ continue; } // Silence warning
+                                    catch(e) { continue; }
                                     if (range.compareBoundaryPoints(Range.START_TO_END, nodeEndRange) >= 0) {
                                         if (/\S/.test(currentNode.textContent || '')) { lastValidNodeBeforeCursor = currentNode; }
                                     } else { break; }
                                 }
                                 if (lastValidNodeBeforeCursor) {
                                     targetContainer = lastValidNodeBeforeCursor; targetOffset = targetContainer.textContent?.length || 0;
-                                    // console.log(`Found preceding text node via TreeWalker: "${targetContainer.textContent.slice(-30)}"`);
-                                } else { /* console.log("TreeWalker did not find a preceding non-empty text node."); */ }
+                                }
                             }
                             // Proceed only if we found a valid target
                             if (targetContainer && targetContainer.nodeType === Node.TEXT_NODE && targetOffset > 0) {
                                 const text = targetContainer.textContent || '';
-                                // console.log(`Operating on text: "${text.substring(0, 20)}...", Offset: ${targetOffset}`);
                                 let effectiveOffset = targetOffset;
                                 while (effectiveOffset > 0 && (text[effectiveOffset - 1] === ' ' || text[effectiveOffset - 1] === '\n')) { effectiveOffset--; }
                                 let wordStart = effectiveOffset;
@@ -279,16 +259,15 @@
                                              console.error("Could not find parent node to insert ZWS.");
                                              const fallbackRange = document.createRange(); fallbackRange.setStartAfter(delElement); fallbackRange.collapse(true); selection.removeAllRanges(); selection.addRange(fallbackRange);
                                         }
-                                        editor.dispatchEvent(new Event('input', { bubbles: true })); // console.log("Struck out word.");
-                                    } else { /* console.log("Word already struck out or cursor in ambiguous position."); */ }
-                                } else { /* console.log("No word found before cursor (or only spaces found)."); */ }
-                            } else { /* console.log("Could not find suitable text node or position to apply strikethrough."); */ }
-                        } else { /* console.log("Selection is not collapsed or invalid."); */ }
+                                        editor.dispatchEvent(new Event('input', { bubbles: true }));
+                                    }
+                                }
+                            }
+                        }
                     } catch (e) { console.error("Error applying strikethrough:", e); }
                     lastBackspaceTime = 0; // Reset timer
                 } else {
                     lastBackspaceTime = currentTime; // Update time
-                    // console.log("Single Backspace press detected - timer started.");
                 }
                  return; // Stop processing
             }
@@ -299,10 +278,8 @@
         // Save to Local Storage
         editor.addEventListener('input', function() {
             localStorage.setItem(localStorageKey, editor.innerHTML);
-            // console.log("Content saved to local storage."); // Reduce logging
         });
 
     </script>
 </body>
 </html>
-
