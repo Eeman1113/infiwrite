@@ -33,7 +33,6 @@
             left: 0;
             width: 100%;
             height: 100%;
-            /* Generate noise using SVG filter applied as a background */
             background-image: url('data:image/svg+xml,\
                 <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">\
                 <filter id="noise">\
@@ -41,58 +40,54 @@
                 </filter>\
                 <rect width="100%" height="100%" filter="url(%23noise)" opacity="0.05"/>\
                 </svg>');
-            pointer-events: none; /* Allow clicks to pass through */
-            z-index: -1; /* Place behind content */
-            opacity: 0.5; /* Adjust noise intensity */
+            pointer-events: none;
+            z-index: -1;
+            opacity: 0.5;
         }
 
-        /* Main container for centering content */
+        /* Main container */
         .container {
             display: flex;
-            justify-content: center; /* Center horizontally */
-            align-items: flex-start; /* Align text to the top */
-            min-height: 100vh; /* Full viewport height */
-            padding: 5vh 5vw; /* Add some padding around the editor */
-            overflow-y: auto; /* Enable vertical scrolling for the container */
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            padding: 5vh 5vw;
+            overflow-y: auto;
         }
 
-        /* The editable text area */
+        /* Editable area */
         #editor {
             width: 100%;
-            max-width: 80ch; /* Limit line length for readability */
-            min-height: 90vh; /* Ensure it takes up most of the vertical space */
-            font-size: 18px; /* Adjust font size as needed */
+            max-width: 80ch;
+            min-height: 90vh;
+            font-size: 18px;
             line-height: 1.6;
-            text-align: left; /* Keep text left-aligned within the centered block */
-            outline: none; /* Remove default focus outline */
-            white-space: pre-wrap; /* Preserve whitespace and wrap text */
-            word-wrap: break-word; /* Break long words */
-            caret-color: #e0e0e0; /* Make the cursor visible */
+            text-align: left;
+            outline: none;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            caret-color: #e0e0e0;
         }
 
-        /* Styling for deleted text */
+        /* Strikethrough style */
         #editor del {
-            color: #888; /* Dim color for struck-through text */
-            text-decoration: line-through; /* Ensure strikethrough */
-            text-decoration-color: #aaa; /* Color for the line */
+            color: #888;
+            text-decoration: line-through;
+            text-decoration-color: #aaa;
         }
 
-
-        /* Placeholder styling */
+        /* Placeholder */
         #editor:empty::before {
             content: "Start typing here... (Ctrl/Cmd+S to Save)";
-            color: #555; /* Dim placeholder text */
-            pointer-events: none; /* Allow clicking through placeholder */
-            display: block; /* Make it a block element */
-            text-align: center; /* Center the placeholder text */
-            padding-top: 30vh; /* Position placeholder lower initially */
+            color: #555;
+            pointer-events: none;
+            display: block;
+            text-align: center;
+            padding-top: 30vh;
         }
-
-        /* Hide placeholder when editor has focus but is still empty */
-         #editor:focus::before {
+        #editor:focus::before {
              content: "";
          }
-
     </style>
 </head>
 <body>
@@ -101,15 +96,11 @@
     </div>
 
     <script>
-        // Get the editor element
         const editor = document.getElementById('editor');
-        // Define the key for local storage
         const localStorageKey = 'noiseEditorContent';
-        // Variable to track the last backspace press time
         let lastBackspaceTime = 0;
-        const doublePressThreshold = 500; // Milliseconds for double press detection
+        const doublePressThreshold = 500;
 
-        // --- Load content from Local Storage on page load ---
         window.onload = () => {
             const savedContent = localStorage.getItem(localStorageKey);
             if (savedContent) {
@@ -117,15 +108,12 @@
             }
         };
 
-        // --- Function to trigger file download ---
         function saveTextToFile() {
             console.log("Save function triggered.");
             try {
                 const textContent = editor.textContent || '';
-                // Use the document title for the filename, default to "notes"
                 const baseFilename = document.title || 'notes';
-                const filename = `${baseFilename.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.txt`; // Sanitize filename
-
+                const filename = `${baseFilename.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.txt`;
                 const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
                 const link = document.createElement('a');
                 const url = URL.createObjectURL(blob);
@@ -142,29 +130,10 @@
             }
         }
 
-        // --- Helper: Find last non-empty text node within an element (recursive) ---
-         function findLastTextNode(node) {
-            if (!node) return null;
-            // If it's a text node with actual content (not just whitespace)
-            if (node.nodeType === Node.TEXT_NODE && /\S/.test(node.textContent || '')) {
-                return node;
-            }
-            // If it's an element node, search its children from last to first
-            if (node.nodeType === Node.ELEMENT_NODE) {
-                 for (let i = node.childNodes.length - 1; i >= 0; i--) {
-                    const found = findLastTextNode(node.childNodes[i]);
-                    if (found) return found;
-                }
-            }
-            // If it's not a text node or an element with text nodes, return null
-            return null;
-        }
-
-
         // --- Handle Keydown Events ---
         editor.addEventListener('keydown', function(event) {
 
-            // --- Handle Save Shortcut (Ctrl+S / Cmd+S) ---
+            // --- Save Shortcut ---
             if ((event.ctrlKey || event.metaKey) && (event.key === 's' || event.key === 'S')) {
                 event.preventDefault();
                 saveTextToFile();
@@ -172,7 +141,7 @@
                 return;
             }
 
-            // --- Prevent Delete key ---
+            // --- Prevent Delete ---
             if (event.key === 'Delete' || event.keyCode === 46) {
                  event.preventDefault();
                  console.log("Delete key prevented.");
@@ -180,7 +149,7 @@
                  return;
             }
 
-            // --- Handle Backspace (Double Press for Strikethrough) ---
+            // --- Handle Backspace ---
             if (event.key === 'Backspace' || event.keyCode === 8) {
                 event.preventDefault();
 
@@ -199,45 +168,76 @@
                             let targetContainer = null;
                             let targetOffset = 0;
 
-                            // Determine target node/offset
+                            // --- MODIFICATION START: Find Target Node using TreeWalker ---
+                            console.log(`Initial check: Container=${container.nodeName}, Offset=${offset}, Type=${container.nodeType}`);
+
                             if (container.nodeType === Node.TEXT_NODE && offset > 0) {
+                                // Standard case: Cursor is within a text node with content before it.
                                 targetContainer = container;
                                 targetOffset = offset;
-                                console.log("Case 1: Cursor within text node.");
-                            } else if (offset === 0) {
-                                console.log("Case 2: Cursor at offset 0. Looking for previous text node.");
-                                let previousNode = container.previousSibling;
-                                if(container.nodeType !== Node.TEXT_NODE && !previousNode && container.parentNode !== editor) {
-                                    previousNode = container.parentNode.previousSibling;
-                                    console.log("Looking at parent's previous sibling:", previousNode);
+                                console.log("Mode 1: Cursor within text node.");
+                            } else {
+                                // Case: Cursor is at offset 0 or not in a text node.
+                                // We need to find the last text node *before* the current cursor position.
+                                console.log("Mode 2: Cursor at offset 0 or not in text. Searching backwards...");
+
+                                // Create a TreeWalker to iterate through text nodes within the editor
+                                const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, null, false);
+                                let currentNode = null;
+                                let lastValidNodeBeforeCursor = null;
+
+                                // Iterate through all text nodes from the beginning
+                                while ((currentNode = walker.nextNode())) {
+                                    // Create a range representing the end of the current node being checked
+                                    const nodeEndRange = document.createRange();
+                                    try {
+                                        nodeEndRange.selectNodeContents(currentNode);
+                                        nodeEndRange.collapse(false); // Collapse to the end point
+                                    } catch(e) {
+                                        console.warn("Could not select node contents, skipping node:", currentNode, e);
+                                        continue; // Skip this node if selection fails
+                                    }
+
+
+                                    // Compare the cursor position (range.start) with the end of the current node
+                                    // range.compareBoundaryPoints returns:
+                                    // -1 if range start is BEFORE nodeEndRange start
+                                    //  0 if they are the same
+                                    //  1 if range start is AFTER nodeEndRange start
+                                    // We want nodes that END before or exactly at the cursor position.
+                                    if (range.compareBoundaryPoints(Range.START_TO_END, nodeEndRange) >= 0) {
+                                        // Check if the node has actual content (not just whitespace)
+                                        if (/\S/.test(currentNode.textContent || '')) {
+                                            // This node ends before or at the cursor, and has content. It's our current best candidate.
+                                            lastValidNodeBeforeCursor = currentNode;
+                                            // console.log(`Candidate node found: "${lastValidNodeBeforeCursor.textContent.slice(-20)}"`);
+                                        }
+                                    } else {
+                                        // We've found a node that ends *after* the cursor position.
+                                        // This means the previous candidate (`lastValidNodeBeforeCursor`) was the correct one.
+                                        // console.log("Node ends after cursor, stopping search.");
+                                        break;
+                                    }
                                 }
-                                if (previousNode) {
-                                     console.log("Found previous sibling:", previousNode);
-                                    const lastText = findLastTextNode(previousNode);
-                                    if (lastText) {
-                                        console.log("Found last text node in previous sibling:", lastText);
-                                        targetContainer = lastText;
-                                        targetOffset = lastText.textContent?.length || 0;
-                                    } else { console.log("Previous sibling contains no suitable text node."); }
+
+                                // Use the last valid node found
+                                if (lastValidNodeBeforeCursor) {
+                                    targetContainer = lastValidNodeBeforeCursor;
+                                    targetOffset = targetContainer.textContent?.length || 0; // Target the end of this node
+                                    console.log(`Found preceding text node via TreeWalker: "${targetContainer.textContent.slice(-30)}"`);
                                 } else {
-                                     console.log("No previous sibling found relative to cursor container.");
-                                     if (container.nodeType === Node.TEXT_NODE && container.textContent === '' && container.previousSibling && container.previousSibling.nodeType === Node.TEXT_NODE) {
-                                         const prevText = findLastTextNode(container.previousSibling);
-                                         if(prevText) {
-                                            targetContainer = prevText;
-                                            targetOffset = prevText.textContent?.length || 0;
-                                            console.log("Fallback: Found text in previous sibling of empty text node.");
-                                         }
-                                     }
+                                     console.log("TreeWalker did not find a preceding non-empty text node.");
                                 }
                             }
+                            // --- MODIFICATION END ---
 
-                            // Proceed only if we found a valid target
+
+                            // --- Proceed only if we found a valid target ---
                             if (targetContainer && targetContainer.nodeType === Node.TEXT_NODE && targetOffset > 0) {
                                 const text = targetContainer.textContent || '';
-                                console.log(`Operating on text node: "${text.substring(0, 20)}...", Offset: ${targetOffset}`);
+                                console.log(`Operating on text: "${text.substring(0, 20)}...", Offset: ${targetOffset}`);
 
-                                // Find word boundaries
+                                // Find word boundaries (logic remains the same, uses targetContainer/Offset)
                                 let effectiveOffset = targetOffset;
                                 while (effectiveOffset > 0 && (text[effectiveOffset - 1] === ' ' || text[effectiveOffset - 1] === '\n')) { effectiveOffset--; }
                                 let wordStart = effectiveOffset;
@@ -284,25 +284,24 @@
                             } else { console.log("Could not find suitable text node or position to apply strikethrough."); }
                         } else { console.log("Selection is not collapsed or invalid."); }
                     } catch (e) { console.error("Error applying strikethrough:", e); }
-                    lastBackspaceTime = 0; // Reset timer after double press action
+                    lastBackspaceTime = 0; // Reset timer
                 } else {
-                    lastBackspaceTime = currentTime; // Update time for single press
+                    lastBackspaceTime = currentTime; // Update time
                     console.log("Single Backspace press detected - timer started.");
                 }
-                 return; // Stop processing after handling backspace
+                 return; // Stop processing
             }
 
-            // --- Reset backspace timer if another unrelated key is pressed ---
+            // --- Reset backspace timer ---
             lastBackspaceTime = 0;
 
-        }); // End of keydown listener
+        }); // End keydown listener
 
-        // --- Save content to Local Storage on input ---
+        // --- Save to Local Storage ---
         editor.addEventListener('input', function() {
             localStorage.setItem(localStorageKey, editor.innerHTML);
             console.log("Content saved to local storage.");
         });
-        // ---------------------------------------------
 
     </script>
 </body>
