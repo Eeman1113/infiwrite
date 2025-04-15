@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>infiwrite</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=PT+Serif+Caption:ital@0;1&display=swap" rel="stylesheet">
+    <style>
+        /* Basic reset and body styling */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            height: 100%;
+            width: 100%;
+            background-color: #1a1a1a; /* Dark background */
+            color: #e0e0e0; /* Light text color */
+            font-family: 'PT Serif Caption', serif; /* Apply the font */
+            overflow: hidden; /* Prevent body scroll, editor handles scroll */
+            position: relative; /* Needed for the noise pseudo-element */
+        }
+
+        /* Noise texture overlay */
+        body::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            /* Generate noise using SVG filter applied as a background */
+            background-image: url('data:image/svg+xml,\
+                <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">\
+                <filter id="noise">\
+                    <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/>\
+                </filter>\
+                <rect width="100%" height="100%" filter="url(%23noise)" opacity="0.05"/>\
+                </svg>');
+            pointer-events: none; /* Allow clicks to pass through */
+            z-index: -1; /* Place behind content */
+            opacity: 0.5; /* Adjust noise intensity */
+        }
+
+        /* Main container for centering content */
+        .container {
+            display: flex;
+            justify-content: center; /* Center horizontally */
+            align-items: flex-start; /* Align text to the top */
+            min-height: 100vh; /* Full viewport height */
+            padding: 5vh 5vw; /* Add some padding around the editor */
+            overflow-y: auto; /* Enable vertical scrolling for the container */
+        }
+
+        /* The editable text area */
+        #editor {
+            width: 100%;
+            max-width: 80ch; /* Limit line length for readability */
+            min-height: 90vh; /* Ensure it takes up most of the vertical space */
+            font-size: 18px; /* Adjust font size as needed */
+            line-height: 1.6;
+            text-align: left; /* Keep text left-aligned within the centered block */
+            outline: none; /* Remove default focus outline */
+            white-space: pre-wrap; /* Preserve whitespace and wrap text */
+            word-wrap: break-word; /* Break long words */
+            caret-color: #e0e0e0; /* Make the cursor visible */
+        }
+
+        /* Styling for deleted text */
+        #editor del {
+            color: #888; /* Dim color for struck-through text */
+            text-decoration: line-through; /* Ensure strikethrough */
+            text-decoration-color: #aaa; /* Color for the line */
+        }
+
+
+        /* Placeholder styling */
+        #editor:empty::before {
+            content: "Start typing here... (Ctrl/Cmd+S to Save)";
+            color: #555; /* Dim placeholder text */
+            pointer-events: none; /* Allow clicking through placeholder */
+            display: block; /* Make it a block element */
+            text-align: center; /* Center the placeholder text */
+            padding-top: 30vh; /* Position placeholder lower initially */
+        }
+
+        /* Hide placeholder when editor has focus but is still empty */
+         #editor:focus::before {
+             content: "";
+         }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="editor" contenteditable="true" spellcheck="false"></div>
+    </div>
+
+    <script>
+        // Get the editor element
+        const editor = document.getElementById('editor');
+        // Define the key for local storage
+        const localStorageKey = 'noiseEditorContent';
+        // Variable to track the last backspace press time
+        let lastBackspaceTime = 0;
+        const doublePressThreshold = 500; // Milliseconds for double press detection
+
+        // --- Load content from Local Storage on page load ---
+        window.onload = () => {
+            const savedContent = localStorage.getItem(localStorageKey);
+            if (savedContent) {
+                editor.innerHTML = savedContent;
+            }
+        };
+
+        // --- Function to trigger file download ---
+        function saveTextToFile() {
+            console.log("Save function triggered.");
+            try {
+                const textContent = editor.textContent || '';
+                // Use the document title for the filename, default to "notes"
+                const baseFilename = document.title || 'notes';
+                const filename = `${baseFilename.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.txt`; // Sanitize filename
+
+                const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                link.href = url;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                setTimeout(() => URL.revokeObjectURL(url), 100);
+                console.log(`Content prepared for saving as ${filename}`);
+            } catch (e) {
+                console.error("Error saving file:", e);
+                alert("Could not save the file due to an error.");
+            }
+        }
+
+        // --- Helper: Find last non-empty text node within an element (recursive) ---
+         function findLastTextNode(node) {
+            if (!node) return null;
+            // If it's a text node with actual content (not just whitespace)
+            if (node.nodeType === Node.TEXT_NODE && /\S/.test(node.textContent || '')) {
+                return node;
+            }
+            // If it's an element node, search its children from last to first
+            if (node.nodeType === Node.ELEMENT_NODE) {
+                 for (let i = node.childNodes.length - 1; i >= 0; i--) {
+                    const found = findLastTextNode(node.childNodes[i]);
+                    if (found) return found;
+                }
+            }
+            // If it's not a text node or an element with text nodes, return null
+            return null;
+        }
+
+
+        // --- Handle Keydown Events ---
+        editor.addEventListener('keydown', function(event) {
+
+            // --- Handle Save Shortcut (Ctrl+S / Cmd+S) ---
+            if ((event.ctrlKey || event.metaKey) && (event.key === 's' || event.key === 'S')) {
+                event.preventDefault();
+                saveTextToFile();
+                lastBackspaceTime = 0;
+                return;
+            }
+
+            // --- Prevent Delete key ---
+            if (event.key === 'Delete' || event.keyCode === 46) {
+                 event.preventDefault();
+                 console.log("Delete key prevented.");
+                 lastBackspaceTime = 0;
+                 return;
+            }
+
+            // --- Handle Backspace (Double Press for Strikethrough) ---
+            if (event.key === 'Backspace' || event.keyCode === 8) {
+                event.preventDefault();
+
+                const currentTime = Date.now();
+                const isDoublePress = (currentTime - lastBackspaceTime) < doublePressThreshold;
+
+                if (isDoublePress) {
+                    console.log("Double Backspace detected.");
+                    try {
+                        const selection = window.getSelection();
+                        if (selection && selection.rangeCount > 0 && selection.isCollapsed) {
+                            const range = selection.getRangeAt(0);
+                            let container = range.startContainer;
+                            let offset = range.startOffset;
+
+                            let targetContainer = null;
+                            let targetOffset = 0;
+
+                            // Determine target node/offset
+                            if (container.nodeType === Node.TEXT_NODE && offset > 0) {
+                                targetContainer = container;
+                                targetOffset = offset;
+                                console.log("Case 1: Cursor within text node.");
+                            } else if (offset === 0) {
+                                console.log("Case 2: Cursor at offset 0. Looking for previous text node.");
+                                let previousNode = container.previousSibling;
+                                if(container.nodeType !== Node.TEXT_NODE && !previousNode && container.parentNode !== editor) {
+                                    previousNode = container.parentNode.previousSibling;
+                                    console.log("Looking at parent's previous sibling:", previousNode);
+                                }
+                                if (previousNode) {
+                                     console.log("Found previous sibling:", previousNode);
+                                    const lastText = findLastTextNode(previousNode);
+                                    if (lastText) {
+                                        console.log("Found last text node in previous sibling:", lastText);
+                                        targetContainer = lastText;
+                                        targetOffset = lastText.textContent?.length || 0;
+                                    } else { console.log("Previous sibling contains no suitable text node."); }
+                                } else {
+                                     console.log("No previous sibling found relative to cursor container.");
+                                     if (container.nodeType === Node.TEXT_NODE && container.textContent === '' && container.previousSibling && container.previousSibling.nodeType === Node.TEXT_NODE) {
+                                         const prevText = findLastTextNode(container.previousSibling);
+                                         if(prevText) {
+                                            targetContainer = prevText;
+                                            targetOffset = prevText.textContent?.length || 0;
+                                            console.log("Fallback: Found text in previous sibling of empty text node.");
+                                         }
+                                     }
+                                }
+                            }
+
+                            // Proceed only if we found a valid target
+                            if (targetContainer && targetContainer.nodeType === Node.TEXT_NODE && targetOffset > 0) {
+                                const text = targetContainer.textContent || '';
+                                console.log(`Operating on text node: "${text.substring(0, 20)}...", Offset: ${targetOffset}`);
+
+                                // Find word boundaries
+                                let effectiveOffset = targetOffset;
+                                while (effectiveOffset > 0 && (text[effectiveOffset - 1] === ' ' || text[effectiveOffset - 1] === '\n')) { effectiveOffset--; }
+                                let wordStart = effectiveOffset;
+                                if (effectiveOffset > 0) { while (wordStart > 0 && /\w/.test(text[wordStart - 1])) { wordStart--; } }
+                                else { wordStart = 0; }
+
+                                if (wordStart < effectiveOffset) {
+                                    const wordRange = document.createRange();
+                                    wordRange.setStart(targetContainer, wordStart);
+                                    wordRange.setEnd(targetContainer, effectiveOffset);
+
+                                    // Check if already deleted
+                                    let parent = targetContainer.parentNode;
+                                    let isAlreadyDeleted = false;
+                                    while(parent && parent !== editor) { if (parent.nodeName === 'DEL') { isAlreadyDeleted = true; break; } parent = parent.parentNode; }
+                                    if (!isAlreadyDeleted && wordRange.startContainer.previousSibling && wordRange.startContainer.previousSibling.nodeName === 'DEL' && wordRange.startOffset === 0) { /* Edge case */ }
+                                    else if (!isAlreadyDeleted && targetContainer.parentNode.nodeName === 'DEL') { isAlreadyDeleted = true; }
+
+                                    if (!isAlreadyDeleted) {
+                                        // Apply strikethrough
+                                        const contents = wordRange.extractContents();
+                                        const delElement = document.createElement('del');
+                                        delElement.appendChild(contents);
+                                        wordRange.insertNode(delElement);
+
+                                        // Position cursor using ZWS
+                                        const parentNode = delElement.parentNode;
+                                        if (parentNode) {
+                                            const zwsNode = document.createTextNode('\u200B');
+                                            parentNode.insertBefore(zwsNode, delElement.nextSibling);
+                                            const cursorRange = document.createRange();
+                                            cursorRange.setStart(zwsNode, 1);
+                                            cursorRange.collapse(true);
+                                            selection.removeAllRanges();
+                                            selection.addRange(cursorRange);
+                                        } else {
+                                             console.error("Could not find parent node to insert ZWS.");
+                                             const fallbackRange = document.createRange(); fallbackRange.setStartAfter(delElement); fallbackRange.collapse(true); selection.removeAllRanges(); selection.addRange(fallbackRange);
+                                        }
+                                        editor.dispatchEvent(new Event('input', { bubbles: true }));
+                                        console.log("Struck out word.");
+                                    } else { console.log("Word already struck out or cursor in ambiguous position."); }
+                                } else { console.log("No word found before cursor (or only spaces found)."); }
+                            } else { console.log("Could not find suitable text node or position to apply strikethrough."); }
+                        } else { console.log("Selection is not collapsed or invalid."); }
+                    } catch (e) { console.error("Error applying strikethrough:", e); }
+                    lastBackspaceTime = 0; // Reset timer after double press action
+                } else {
+                    lastBackspaceTime = currentTime; // Update time for single press
+                    console.log("Single Backspace press detected - timer started.");
+                }
+                 return; // Stop processing after handling backspace
+            }
+
+            // --- Reset backspace timer if another unrelated key is pressed ---
+            lastBackspaceTime = 0;
+
+        }); // End of keydown listener
+
+        // --- Save content to Local Storage on input ---
+        editor.addEventListener('input', function() {
+            localStorage.setItem(localStorageKey, editor.innerHTML);
+            console.log("Content saved to local storage.");
+        });
+        // ---------------------------------------------
+
+    </script>
+</body>
+</html>
