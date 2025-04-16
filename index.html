@@ -100,9 +100,9 @@
         }
         #editor:focus::before {
              content: "";
-         }
+        }
 
-         /* Scrollbar Styling (WebKit) */
+        /* Scrollbar Styling (WebKit) */
         .container::-webkit-scrollbar {
             width: 8px;
             height: 8px;
@@ -121,8 +121,8 @@
             background-color: rgba(255, 255, 255, 0.25);
         }
         .container::-webkit-scrollbar-corner {
-           background: rgba(0, 0, 0, 0);
-         }
+            background: rgba(0, 0, 0, 0);
+        }
 
     </style>
 </head>
@@ -167,14 +167,14 @@
             }
         }
 
-         function findLastTextNode(node) {
+        function findLastTextNode(node) {
             if (!node) return null;
             if (node.nodeType === Node.TEXT_NODE && /\S/.test(node.textContent || '')) { return node; }
             if (node.nodeType === Node.ELEMENT_NODE) {
                  for (let i = node.childNodes.length - 1; i >= 0; i--) {
                     const found = findLastTextNode(node.childNodes[i]);
                     if (found) return found;
-                }
+                 }
             }
             return null;
         }
@@ -198,12 +198,22 @@
             if ((event.ctrlKey || event.metaKey) && (event.key === 's' || event.key === 'S')) {
                 event.preventDefault(); saveTextToFile(); lastBackspaceTime = 0; return;
             }
+
+            // *** NEW: Prevent Cut Shortcut ***
+            if ((event.ctrlKey || event.metaKey) && (event.key === 'x' || event.key === 'X')) {
+                event.preventDefault();
+                console.log("Cut (Ctrl/Cmd+X) prevented.");
+                lastBackspaceTime = 0; // Reset backspace timer
+                return;
+            }
+
             // Prevent Delete
-            if (event.key === 'Delete' || event.keyCode === 46) {
+            if (event.key === 'Delete' || event.keyCode === 46) { // keyCode for older browsers
                  event.preventDefault(); console.log("Delete key prevented."); lastBackspaceTime = 0; return;
             }
+
             // Handle Backspace
-            if (event.key === 'Backspace' || event.keyCode === 8) {
+            if (event.key === 'Backspace' || event.keyCode === 8) { // keyCode for older browsers
                 event.preventDefault();
                 const currentTime = Date.now();
                 const isDoublePress = (currentTime - lastBackspaceTime) < doublePressThreshold;
@@ -224,7 +234,7 @@
                                 while ((currentNode = walker.nextNode())) {
                                     const nodeEndRange = document.createRange();
                                     try { nodeEndRange.selectNodeContents(currentNode); nodeEndRange.collapse(false); }
-                                    catch(e) { continue; }
+                                    catch(e) { continue; } // Skip nodes we can't select (like empty ones maybe?)
                                     if (range.compareBoundaryPoints(Range.START_TO_END, nodeEndRange) >= 0) {
                                         if (/\S/.test(currentNode.textContent || '')) { lastValidNodeBeforeCursor = currentNode; }
                                     } else { break; }
@@ -237,44 +247,111 @@
                             if (targetContainer && targetContainer.nodeType === Node.TEXT_NODE && targetOffset > 0) {
                                 const text = targetContainer.textContent || '';
                                 let effectiveOffset = targetOffset;
+                                // Move offset backward past any trailing whitespace
                                 while (effectiveOffset > 0 && (text[effectiveOffset - 1] === ' ' || text[effectiveOffset - 1] === '\n')) { effectiveOffset--; }
+
                                 let wordStart = effectiveOffset;
-                                if (effectiveOffset > 0) { while (wordStart > 0 && /\w/.test(text[wordStart - 1])) { wordStart--; } } else { wordStart = 0; }
+                                // Find the start of the word (sequence of word characters)
+                                if (effectiveOffset > 0) {
+                                    // Use \w which matches letters, numbers, and underscore
+                                    while (wordStart > 0 && /\w/.test(text[wordStart - 1])) { wordStart--; }
+                                } else {
+                                     wordStart = 0; // Cursor was at the very beginning or after only whitespace
+                                }
+
+                                // Only proceed if we actually found a word boundary before the effective offset
                                 if (wordStart < effectiveOffset) {
                                     const wordRange = document.createRange();
                                     wordRange.setStart(targetContainer, wordStart); wordRange.setEnd(targetContainer, effectiveOffset);
-                                    let parent = targetContainer.parentNode; let isAlreadyDeleted = false;
-                                    while(parent && parent !== editor) { if (parent.nodeName === 'DEL') { isAlreadyDeleted = true; break; } parent = parent.parentNode; }
-                                    if (!isAlreadyDeleted && wordRange.startContainer.previousSibling && wordRange.startContainer.previousSibling.nodeName === 'DEL' && wordRange.startOffset === 0) { /* Edge case */ }
-                                    else if (!isAlreadyDeleted && targetContainer.parentNode.nodeName === 'DEL') { isAlreadyDeleted = true; }
+
+                                    // Check if the target text is already inside a <del> tag
+                                    let parent = targetContainer.parentNode;
+                                    let isAlreadyDeleted = false;
+                                    while(parent && parent !== editor) {
+                                        if (parent.nodeName === 'DEL') {
+                                            isAlreadyDeleted = true;
+                                            break;
+                                        }
+                                        parent = parent.parentNode;
+                                    }
+                                    // More specific check: if the range starts right after a <del> at the beginning of the text node
+                                     if (!isAlreadyDeleted && wordRange.startContainer.previousSibling && wordRange.startContainer.previousSibling.nodeName === 'DEL' && wordRange.startOffset === 0) {
+                                        // This could happen if you backspace right after a deleted word; avoid re-wrapping
+                                        console.log("Edge case: Trying to delete starting right after a DEL tag. Skipping.");
+                                     }
+                                    // Check the immediate parent as well (TreeWalker might not catch this if the text node is the direct child)
+                                     else if (!isAlreadyDeleted && targetContainer.parentNode.nodeName === 'DEL') {
+                                        isAlreadyDeleted = true;
+                                     }
+
+
                                     if (!isAlreadyDeleted) {
-                                        const contents = wordRange.extractContents(); const delElement = document.createElement('del');
-                                        delElement.appendChild(contents); wordRange.insertNode(delElement);
+                                        // Wrap the word in <del> tags
+                                        const contents = wordRange.extractContents();
+                                        const delElement = document.createElement('del');
+                                        delElement.appendChild(contents);
+                                        wordRange.insertNode(delElement); // Insert the <del> element
+
+                                        // Place cursor after the inserted <del> element using a Zero-Width Space (ZWS)
                                         const parentNode = delElement.parentNode;
                                         if (parentNode) {
+                                            // Insert ZWS after the <del> element
                                             const zwsNode = document.createTextNode('\u200B');
+                                            // Insert after the delElement. If delElement is the last child, append.
                                             parentNode.insertBefore(zwsNode, delElement.nextSibling);
-                                            const cursorRange = document.createRange(); cursorRange.setStart(zwsNode, 1); cursorRange.collapse(true);
-                                            selection.removeAllRanges(); selection.addRange(cursorRange);
+
+                                            // Set cursor position after the ZWS
+                                            const cursorRange = document.createRange();
+                                            cursorRange.setStart(zwsNode, 1); // Position cursor after the ZWS character
+                                            cursorRange.collapse(true);
+                                            selection.removeAllRanges();
+                                            selection.addRange(cursorRange);
+
                                         } else {
+                                            // Fallback if parentNode somehow isn't found (shouldn't happen)
                                              console.error("Could not find parent node to insert ZWS.");
-                                             const fallbackRange = document.createRange(); fallbackRange.setStartAfter(delElement); fallbackRange.collapse(true); selection.removeAllRanges(); selection.addRange(fallbackRange);
+                                            const fallbackRange = document.createRange();
+                                            fallbackRange.setStartAfter(delElement);
+                                            fallbackRange.collapse(true);
+                                            selection.removeAllRanges();
+                                            selection.addRange(fallbackRange);
                                         }
+
+                                         // Trigger input event to update local storage
                                         editor.dispatchEvent(new Event('input', { bubbles: true }));
+                                    } else {
+                                        console.log("Target text is already within a <del> tag or starts right after one. Skipping.");
                                     }
+                                } else {
+                                    console.log("No word character found before the cursor (only whitespace or start of node). Skipping strikethrough.");
                                 }
+                            } else {
+                                console.log("Could not find suitable text node before cursor or cursor at start.");
                             }
+                        } else if (selection && !selection.isCollapsed) {
+                             console.log("Backspace ignored for selection."); // Don't apply strikethrough if text is selected
                         }
-                    } catch (e) { console.error("Error applying strikethrough:", e); }
-                    lastBackspaceTime = 0; // Reset timer
+                    } catch (e) {
+                         console.error("Error applying strikethrough:", e);
+                    }
+                    lastBackspaceTime = 0; // Reset timer after double press action
                 } else {
-                    lastBackspaceTime = currentTime; // Update time
+                    lastBackspaceTime = currentTime; // Record time of first press
                 }
-                 return; // Stop processing
-            }
-            // Reset backspace timer
+                 return; // Stop processing here for Backspace key
+            } // End Backspace handler
+
+            // Reset backspace timer if any other key is pressed
             lastBackspaceTime = 0;
         }); // End keydown listener
+
+        // *** NEW: Prevent Cut event (catches context menu, etc.) ***
+        editor.addEventListener('cut', function(event) {
+            event.preventDefault();
+            console.log("Cut event explicitly prevented.");
+            // Optionally, you could provide user feedback here (e.g., a brief message)
+            // alert("Cutting text is disabled in this editor.");
+        });
 
         // Save to Local Storage
         editor.addEventListener('input', function() {
